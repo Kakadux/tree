@@ -69,6 +69,17 @@
   function render(agency,all,shown){
     if(!shown.length) return fail('ไม่พบคู่สัญญา','หน่วยงานนี้ยังไม่มีข้อมูลบริษัทผู้ชนะในชุดข้อมูล');
     const w=chart.getWidth(),h=chart.getHeight(),small=w<460||h<330;
+    const compactMode=(w<700||h<520)&&all.length>7;
+    if(compactMode){
+      const rest=all.slice(6);
+      const other={id:'__other__',key:'__other__',name:`บริษัทอื่นอีก ${integer(rest.length)} แห่ง`,tax:'',isOther:true,companyCount:rest.length,count:0,value:0,maxLevel:'low',risks:{high:0,mid:0,low:0}};
+      rest.forEach(c=>{
+        other.count+=c.count; other.value+=c.value;
+        other.risks.high+=c.risks.high; other.risks.mid+=c.risks.mid; other.risks.low+=c.risks.low;
+        if(rank[c.maxLevel]>rank[other.maxLevel]) other.maxLevel=c.maxLevel;
+      });
+      shown=[...all.slice(0,6),other];
+    }
     const sourceX=w*.50,sourceY=h*.50;
     const maxCount=Math.max(...shown.map(c=>c.count),1),maxValue=Math.max(...shown.map(c=>c.value),1);
     const totalValue=all.reduce((s,c)=>s+c.value,0),totalProjects=all.reduce((s,c)=>s+c.count,0);
@@ -85,13 +96,14 @@
       const radius=Math.min(w,h)*(.29+ring*.14);
       const x=sourceX+Math.cos(angle)*radius,y=sourceY+Math.sin(angle)*radius;
       const crowded=shown.length>18;
+      const nodeColor=c.isOther?'#667085':colors[c.maxLevel];
       const nodeSize=i<3?(crowded?38:(small?48:52)):(crowded?32:(small?41:45));
       nodes.push({
         id:c.id,name:c.name,x,y,fixed:true,
-        symbol:companyIcon(colors[c.maxLevel]),symbolSize:nodeSize,value:c.value,company:c,
-        label:{show:true,position:Math.cos(angle)<0?'left':'right',distance:7,formatter:`{name|${truncate(c.name,crowded?11:(small?17:23))}}\n{count|${integer(c.count)} โครงการ}`,width:crowded?78:Math.max(110,w*.28),overflow:'truncate',rich:{name:{fontSize:crowded?9:(small?13:15),fontWeight:800,color:'#273244',lineHeight:crowded?13:20},count:{fontSize:crowded?9:(small?12:13),fontWeight:900,color:colors[c.maxLevel],lineHeight:crowded?12:17}}}
+        symbol:companyIcon(nodeColor),symbolSize:c.isOther?nodeSize+8:nodeSize,value:c.value,company:c,
+        label:{show:true,position:Math.cos(angle)<0?'left':'right',distance:7,formatter:c.isOther?`{other|บริษัทอื่นอีก ${integer(c.companyCount)} แห่ง}\n{count|${integer(c.count)} โครงการ}`:`{name|${truncate(c.name,crowded?11:(small?17:23))}}\n{count|${integer(c.count)} โครงการ}`,width:crowded?78:Math.max(110,w*.28),overflow:'truncate',rich:{other:{fontSize:small?13:15,fontWeight:900,color:'#475467',lineHeight:20},name:{fontSize:crowded?9:(small?13:15),fontWeight:800,color:'#273244',lineHeight:crowded?13:20},count:{fontSize:crowded?9:(small?12:13),fontWeight:900,color:nodeColor,lineHeight:crowded?12:17}}}
       });
-      links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.5+7*c.count/maxCount,color:colors[c.maxLevel],opacity:i<3?.72:.38,curveness:0}});
+      links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.5+7*c.count/maxCount,color:nodeColor,opacity:c.isOther?.6:i<3?.72:.38,curveness:0}});
     });
 
     chart.setOption({
@@ -102,6 +114,7 @@
           if(p.dataType==='edge') return `<b>${integer(p.data.value)} ครั้ง</b>`;
           if(!p.data.company) return `<b>${html(agency)}</b><br>${integer(totalProjects)} โครงการ<br>${integer(all.length)} บริษัทคู่สัญญา<br>${compactMoney(totalValue)}`;
           const c=p.data.company;
+          if(c.isOther) return `<b>บริษัทอื่นอีก ${integer(c.companyCount)} แห่ง</b><br>${integer(c.count)} โครงการ · ${compactMoney(c.value)}<br><span style="color:#98a2b3">ขยาย Element เพื่อดูทุกบริษัท</span>`;
           return `<b>${html(c.name)}</b><br>${c.tax?'เลขผู้เสียภาษี '+html(c.tax)+'<br>':''}${integer(c.count)} โครงการ · ${compactMoney(c.value)}<br><span style="color:${colors[c.maxLevel]}">●</span> ${labels[c.maxLevel]}`;
         }
       },
