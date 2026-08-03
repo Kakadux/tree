@@ -24,7 +24,7 @@
   const query = new URLSearchParams(location.search);
   const CSV_URL = query.get('data') || 'projects.csv';
   const requestedAgency = (query.get('agency') || query.get('agencyId') || '').trim();
-  const TOP_N = Math.max(5, Math.min(20, Number(query.get('top')) || 12));
+  const TOP_N = Math.max(5, Math.min(10, Number(query.get('top')) || 7));
   const colors = {high:'#e1434b',mid:'#f6a800',low:'#10a558'};
   const labels = {high:'เสี่ยงสูง',mid:'เสี่ยงกลาง',low:'เสี่ยงต่ำ'};
   const rank = {low:1,mid:2,high:3};
@@ -67,35 +67,36 @@
   function render(agency,all,shown){
     if(!shown.length) return fail('ไม่พบคู่สัญญา','หน่วยงานนี้ยังไม่มีข้อมูลบริษัทผู้ชนะในชุดข้อมูล');
     const w=chart.getWidth(),h=chart.getHeight(),small=w<460||h<330;
-    const cx=w*.50,cy=h*(small?.55:.56);
-    const radiusX=Math.max(92,Math.min(w*.37,h*.56));
-    const radiusY=Math.max(76,Math.min(h*.33,w*.28));
+    const sourceX=w*(small?.22:.24),sourceY=h*.56;
+    const companyX=w*(small?.70:.68);
+    const topY=small?88:96,bottomY=h-36;
     const maxCount=Math.max(...shown.map(c=>c.count),1),maxValue=Math.max(...shown.map(c=>c.value),1);
     const totalValue=all.reduce((s,c)=>s+c.value,0),totalProjects=all.reduce((s,c)=>s+c.count,0);
-    const agencySize=Math.max(64,Math.min(90,Math.min(w,h)*.21));
+    const agencyW=Math.max(78,Math.min(112,w*.23)),agencyH=Math.max(64,Math.min(82,h*.22));
     const nodes=[{
-      id:'agency',name:agency,x:cx,y:cy,fixed:true,symbolSize:agencySize,value:totalValue,
+      id:'agency',name:agency,x:sourceX,y:sourceY,fixed:true,symbol:'roundRect',symbolSize:[agencyW,agencyH],value:totalValue,
       itemStyle:{color:new echarts.graphic.RadialGradient(.34,.28,.8,[{offset:0,color:'#67a1ff'},{offset:.42,color:'#2f6fdd'},{offset:1,color:'#1749a0'}]),shadowBlur:25,shadowColor:'rgba(30,91,202,.42)',borderColor:'rgba(255,255,255,.95)',borderWidth:3},
-      label:{show:true,position:'inside',formatter:p=>`{agency|${truncate(p.name,small?16:22)}}\n{agencySub|หน่วยงาน}`,width:agencySize-11,overflow:'break',align:'center',rich:{agency:{color:'#fff',fontWeight:700,fontSize:small?10:11,lineHeight:14,align:'center'},agencySub:{color:'rgba(255,255,255,.72)',fontSize:8,lineHeight:13,align:'center'}}}
+      label:{show:true,position:'inside',formatter:`{big|${integer(totalProjects)}}\n{small|โครงการ}`,align:'center',rich:{big:{color:'#fff',fontWeight:800,fontSize:small?20:24,lineHeight:27,align:'center'},small:{color:'rgba(255,255,255,.76)',fontSize:9,lineHeight:13,align:'center'}}}
     }];
     const links=[];
     shown.forEach((c,i)=>{
-      const angle=-Math.PI/2+i*Math.PI*2/shown.length;
-      const nodeSize=24+31*Math.sqrt(c.value/maxValue);
+      const y=topY+(bottomY-topY)*(shown.length===1?.5:i/(shown.length-1));
+      const x=companyX+(i%2?Math.min(20,w*.04):0);
+      const nodeSize=small?27:30;
       nodes.push({
-        id:c.id,name:c.name,x:cx+radiusX*Math.cos(angle),y:cy+radiusY*Math.sin(angle),fixed:true,
+        id:c.id,name:c.name,x,y,fixed:true,
         symbolSize:nodeSize,value:c.value,company:c,
-        itemStyle:{color:new echarts.graphic.RadialGradient(.34,.28,.75,[{offset:0,color:'#fff'},{offset:.18,color:colors[c.maxLevel]},{offset:1,color:shade(colors[c.maxLevel],-.22)}]),borderColor:'#fff',borderWidth:2.5,shadowBlur:14,shadowColor:colors[c.maxLevel]+'66'},
-        label:{show:!small||shown.length<=10,position:Math.cos(angle)<-.25?'left':Math.cos(angle)>.25?'right':Math.sin(angle)<0?'top':'bottom',distance:5,formatter:p=>`{name|${truncate(p.name,small?14:20)}}\n{count|${integer(c.count)} ครั้ง}`,width:small?88:128,overflow:'truncate',rich:{name:{fontSize:small?9:10,fontWeight:600,color:'#364052',lineHeight:14},count:{fontSize:8,color:colors[c.maxLevel],fontWeight:700,lineHeight:11}}}
+        itemStyle:{color:i<3?new echarts.graphic.RadialGradient(.32,.25,.8,[{offset:0,color:'#fff'},{offset:.2,color:colors[c.maxLevel]},{offset:1,color:shade(colors[c.maxLevel],-.22)}]):'#fff',borderColor:colors[c.maxLevel],borderWidth:i<3?3:2,shadowBlur:i<3?15:5,shadowColor:colors[c.maxLevel]+'66'},
+        label:{show:true,position:'right',distance:7,formatter:`{rank|#${i+1}} {name|${truncate(c.name,small?13:20)}}\n{count|${integer(c.count)} ครั้ง}  {money|${compactMoney(c.value)}}`,width:Math.max(100,w-x-18),overflow:'truncate',rich:{rank:{fontSize:9,fontWeight:800,color:colors[c.maxLevel],lineHeight:14},name:{fontSize:small?9:10,fontWeight:700,color:'#2f394a',lineHeight:14},count:{fontSize:9,fontWeight:800,color:'#202a3b',lineHeight:12},money:{fontSize:8,color:'#8a909b',lineHeight:12}}}
       });
-      links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.15+5.2*c.count/maxCount,color:colors[c.maxLevel],opacity:.32,curveness:(i%2?1:-1)*(.025+.025*(i%3))}});
+      links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.2+7*c.count/maxCount,color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'rgba(36,99,212,.28)'},{offset:1,color:colors[c.maxLevel]}]),opacity:i<3?.68:.3,curveness:(y-sourceY)/(h*3.2)}});
     });
 
     chart.setOption({
       backgroundColor:'transparent',animationDuration:650,animationEasing:'cubicOut',
       title:{
-        text:'เครือข่ายคู่สัญญา',subtext:`${integer(totalProjects)} โครงการ   •   ${integer(all.length)} บริษัท   •   ${compactMoney(totalValue)}`,
-        left:'center',top:10,textAlign:'center',textStyle:{fontFamily:'inherit',fontSize:small?14:16,fontWeight:700,color:'#202a3b'},subtextStyle:{fontFamily:'inherit',fontSize:small?9:10,color:'#7c8492',lineHeight:19}
+        text:'ใครชนะงานบ่อยที่สุด?',subtext:truncate(agency,small?34:55),
+        left:14,top:10,textStyle:{fontFamily:'inherit',fontSize:small?15:18,fontWeight:800,color:'#202a3b'},subtextStyle:{fontFamily:'inherit',fontSize:small?9:10,color:'#677184',lineHeight:19}
       },
       tooltip:{
         trigger:'item',confine:true,backgroundColor:'rgba(24,31,45,.96)',borderColor:'rgba(255,255,255,.12)',borderWidth:1,padding:[11,13],extraCssText:'border-radius:10px;box-shadow:0 10px 28px rgba(25,34,50,.24)',textStyle:{fontFamily:'inherit',fontSize:11,color:'#fff',lineHeight:18},
@@ -107,15 +108,15 @@
         }
       },
       graphic:[
-        {type:'ellipse',silent:true,z:-5,shape:{cx,cy,rx:radiusX*.78,ry:radiusY*.78},style:{fill:'transparent',stroke:'rgba(52,76,112,.09)',lineWidth:1,lineDash:[3,6]}},
-        {type:'ellipse',silent:true,z:-5,shape:{cx,cy,rx:radiusX*1.05,ry:radiusY*1.05},style:{fill:'transparent',stroke:'rgba(52,76,112,.07)',lineWidth:1}},
-        {type:'circle',silent:true,z:-4,shape:{cx,cy,r:agencySize*.68},style:{fill:'rgba(36,99,212,.025)',stroke:'rgba(36,99,212,.08)',lineWidth:1}},
-        {
-        type:'group',right:10,bottom:8,children:[
-          {type:'circle',shape:{cx:0,cy:0,r:4},style:{fill:colors.high}},{type:'text',x:8,y:-6,style:{text:'สูง',font:'10px sans-serif',fill:'#737b88'}},
-          {type:'circle',shape:{cx:35,cy:0,r:4},style:{fill:colors.mid}},{type:'text',x:43,y:-6,style:{text:'กลาง',font:'10px sans-serif',fill:'#737b88'}},
-          {type:'circle',shape:{cx:82,cy:0,r:4},style:{fill:colors.low}},{type:'text',x:90,y:-6,style:{text:'ต่ำ',font:'10px sans-serif',fill:'#737b88'}}
-        ]}],
+        {type:'text',left:sourceX-agencyW*.43,top:sourceY-agencyH*.82,silent:true,style:{text:'หน่วยงาน',font:'700 9px sans-serif',fill:'#8a929f'}},
+        {type:'text',left:companyX-16,top:62,silent:true,style:{text:`TOP ${shown.length} บริษัทคู่สัญญา`,font:'700 9px sans-serif',fill:'#8a929f'}},
+        {type:'group',left:14,bottom:10,children:[
+          {type:'circle',shape:{cx:0,cy:0,r:4},style:{fill:colors.high}},{type:'text',x:8,y:-6,style:{text:'สูง',font:'9px sans-serif',fill:'#737b88'}},
+          {type:'circle',shape:{cx:32,cy:0,r:4},style:{fill:colors.mid}},{type:'text',x:40,y:-6,style:{text:'กลาง',font:'9px sans-serif',fill:'#737b88'}},
+          {type:'circle',shape:{cx:75,cy:0,r:4},style:{fill:colors.low}},{type:'text',x:83,y:-6,style:{text:'ต่ำ',font:'9px sans-serif',fill:'#737b88'}}
+        ]},
+        {type:'text',right:12,bottom:9,silent:true,style:{text:`รวม ${compactMoney(totalValue)}`,font:'700 9px sans-serif',fill:'#566174'}}
+      ],
       series:[{
         type:'graph',layout:'none',roam:true,data:nodes,links,edgeSymbol:['none','none'],
         lineStyle:{cap:'round'},emphasis:{focus:'adjacency',scale:1.12,lineStyle:{opacity:.9}},select:{disabled:true},silent:false
