@@ -35,6 +35,9 @@
   const num = v => Number(String(v || 0).replace(/,/g,'')) || 0;
   const cleanTax = v => String(v || '').replace(/\D/g,'').padStart(13,'0');
   const html = v => String(v ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const svgSymbol = svg => 'image://data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+  const agencyIcon = () => svgSymbol(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#61a0ff"/><stop offset="1" stop-color="#1749a0"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#1749a0" flood-opacity=".35"/></filter></defs><circle cx="50" cy="50" r="43" fill="url(#g)" stroke="white" stroke-width="5" filter="url(#s)"/><path fill="white" d="M24 41 50 26l26 15v6H24zm5 10h8v22h-8zm17 0h8v22h-8zm17 0h8v22h-8zM22 76h56v8H22z"/><circle cx="50" cy="38" r="4" fill="#dceaff"/></svg>`);
+  const companyIcon = color => svgSymbol(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><filter id="s"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="${color}" flood-opacity=".32"/></filter></defs><circle cx="50" cy="50" r="42" fill="white" stroke="${color}" stroke-width="7" filter="url(#s)"/><path fill="${color}" d="M25 77V36c0-3 2-5 5-5h27c3 0 5 2 5 5v11h8c3 0 5 2 5 5v25H58V62H42v15zm10-36h8v8h-8zm15 0h7v8h-7zM35 55h8v8h-8zm15 0h7v8h-7zm15 1h5v7h-5zm0 12h5v7h-5z"/></svg>`);
 
   function fail(title,message){
     state.classList.add('error');
@@ -72,21 +75,19 @@
     const topY=small?88:96,bottomY=h-36;
     const maxCount=Math.max(...shown.map(c=>c.count),1),maxValue=Math.max(...shown.map(c=>c.value),1);
     const totalValue=all.reduce((s,c)=>s+c.value,0),totalProjects=all.reduce((s,c)=>s+c.count,0);
-    const agencyW=Math.max(78,Math.min(112,w*.23)),agencyH=Math.max(64,Math.min(82,h*.22));
+    const agencyW=Math.max(72,Math.min(88,w*.19)),agencyH=agencyW;
     const nodes=[{
-      id:'agency',name:agency,x:sourceX,y:sourceY,fixed:true,symbol:'roundRect',symbolSize:[agencyW,agencyH],value:totalValue,
-      itemStyle:{color:new echarts.graphic.RadialGradient(.34,.28,.8,[{offset:0,color:'#67a1ff'},{offset:.42,color:'#2f6fdd'},{offset:1,color:'#1749a0'}]),shadowBlur:25,shadowColor:'rgba(30,91,202,.42)',borderColor:'rgba(255,255,255,.95)',borderWidth:3},
-      label:{show:true,position:'inside',formatter:`{big|${integer(totalProjects)}}\n{small|โครงการ}`,align:'center',rich:{big:{color:'#fff',fontWeight:800,fontSize:small?20:24,lineHeight:27,align:'center'},small:{color:'rgba(255,255,255,.76)',fontSize:9,lineHeight:13,align:'center'}}}
+      id:'agency',name:agency,x:sourceX,y:sourceY,fixed:true,symbol:agencyIcon(),symbolSize:[agencyW,agencyH],value:totalValue,
+      label:{show:true,position:'bottom',distance:3,formatter:`{big|${integer(totalProjects)}} {small|โครงการ}`,align:'center',rich:{big:{color:'#1749a0',fontWeight:800,fontSize:small?13:15,lineHeight:18,align:'center'},small:{color:'#667085',fontSize:9,lineHeight:18,align:'center'}}}
     }];
     const links=[];
     shown.forEach((c,i)=>{
       const y=topY+(bottomY-topY)*(shown.length===1?.5:i/(shown.length-1));
       const x=companyX+(i%2?Math.min(20,w*.04):0);
-      const nodeSize=small?27:30;
+      const nodeSize=i<3?(small?39:43):(small?33:36);
       nodes.push({
         id:c.id,name:c.name,x,y,fixed:true,
-        symbolSize:nodeSize,value:c.value,company:c,
-        itemStyle:{color:i<3?new echarts.graphic.RadialGradient(.32,.25,.8,[{offset:0,color:'#fff'},{offset:.2,color:colors[c.maxLevel]},{offset:1,color:shade(colors[c.maxLevel],-.22)}]):'#fff',borderColor:colors[c.maxLevel],borderWidth:i<3?3:2,shadowBlur:i<3?15:5,shadowColor:colors[c.maxLevel]+'66'},
+        symbol:companyIcon(colors[c.maxLevel]),symbolSize:nodeSize,value:c.value,company:c,
         label:{show:true,position:'right',distance:7,formatter:`{rank|#${i+1}} {name|${truncate(c.name,small?13:20)}}\n{count|${integer(c.count)} ครั้ง}  {money|${compactMoney(c.value)}}`,width:Math.max(100,w-x-18),overflow:'truncate',rich:{rank:{fontSize:9,fontWeight:800,color:colors[c.maxLevel],lineHeight:14},name:{fontSize:small?9:10,fontWeight:700,color:'#2f394a',lineHeight:14},count:{fontSize:9,fontWeight:800,color:'#202a3b',lineHeight:12},money:{fontSize:8,color:'#8a909b',lineHeight:12}}}
       });
       links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.2+7*c.count/maxCount,color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'rgba(36,99,212,.28)'},{offset:1,color:colors[c.maxLevel]}]),opacity:i<3?.68:.3,curveness:(y-sourceY)/(h*3.2)}});
@@ -108,7 +109,7 @@
         }
       },
       graphic:[
-        {type:'text',left:sourceX-agencyW*.43,top:sourceY-agencyH*.82,silent:true,style:{text:'หน่วยงาน',font:'700 9px sans-serif',fill:'#8a929f'}},
+        {type:'text',left:sourceX-agencyW*.38,top:sourceY-agencyH*.76,silent:true,style:{text:'หน่วยงาน',font:'700 9px sans-serif',fill:'#8a929f'}},
         {type:'text',left:companyX-16,top:62,silent:true,style:{text:`TOP ${shown.length} บริษัทคู่สัญญา`,font:'700 9px sans-serif',fill:'#8a929f'}},
         {type:'group',left:14,bottom:10,children:[
           {type:'circle',shape:{cx:0,cy:0,r:4},style:{fill:colors.high}},{type:'text',x:8,y:-6,style:{text:'สูง',font:'9px sans-serif',fill:'#737b88'}},
