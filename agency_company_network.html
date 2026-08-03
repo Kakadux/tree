@@ -24,7 +24,6 @@
   const query = new URLSearchParams(location.search);
   const CSV_URL = query.get('data') || 'projects.csv';
   const requestedAgency = (query.get('agency') || query.get('agencyId') || '').trim();
-  const TOP_N = Math.max(5, Math.min(10, Number(query.get('top')) || 7));
   const colors = {high:'#e1434b',mid:'#f6a800',low:'#10a558'};
   const labels = {high:'เสี่ยงสูง',mid:'เสี่ยงกลาง',low:'เสี่ยงต่ำ'};
   const rank = {low:1,mid:2,high:3};
@@ -64,15 +63,13 @@
       if(rank[level]>rank[c.maxLevel]) c.maxLevel=level;
     });
     const all=[...companies.values()].sort((a,b)=>b.count-a.count||b.value-a.value);
-    return {all,shown:all.slice(0,TOP_N)};
+    return {all,shown:all};
   }
 
   function render(agency,all,shown){
     if(!shown.length) return fail('ไม่พบคู่สัญญา','หน่วยงานนี้ยังไม่มีข้อมูลบริษัทผู้ชนะในชุดข้อมูล');
     const w=chart.getWidth(),h=chart.getHeight(),small=w<460||h<330;
-    const sourceX=w*(small?.18:.20),sourceY=h*.50;
-    const companyX=w*(small?.55:.58);
-    const topY=30,bottomY=h-30;
+    const sourceX=w*.50,sourceY=h*.50;
     const maxCount=Math.max(...shown.map(c=>c.count),1),maxValue=Math.max(...shown.map(c=>c.value),1);
     const totalValue=all.reduce((s,c)=>s+c.value,0),totalProjects=all.reduce((s,c)=>s+c.count,0);
     const agencyW=Math.max(88,Math.min(108,w*.24)),agencyH=agencyW;
@@ -82,15 +79,19 @@
     }];
     const links=[];
     shown.forEach((c,i)=>{
-      const y=topY+(bottomY-topY)*(shown.length===1?.5:i/(shown.length-1));
-      const x=companyX+(i%2?Math.min(20,w*.04):0);
-      const nodeSize=i<3?(small?48:52):(small?41:45);
+      const perRing=14,ring=Math.floor(i/perRing),ringStart=ring*perRing;
+      const ringCount=Math.min(perRing,shown.length-ringStart);
+      const angle=-Math.PI/2+(i-ringStart)*Math.PI*2/ringCount;
+      const radius=Math.min(w,h)*(.29+ring*.14);
+      const x=sourceX+Math.cos(angle)*radius,y=sourceY+Math.sin(angle)*radius;
+      const crowded=shown.length>18;
+      const nodeSize=i<3?(crowded?38:(small?48:52)):(crowded?32:(small?41:45));
       nodes.push({
         id:c.id,name:c.name,x,y,fixed:true,
         symbol:companyIcon(colors[c.maxLevel]),symbolSize:nodeSize,value:c.value,company:c,
-        label:{show:true,position:'right',distance:10,formatter:`{rank|#${i+1}} {name|${truncate(c.name,small?17:25)}}\n{count|${integer(c.count)} ครั้ง}  {money|${compactMoney(c.value)}}`,width:Math.max(125,w-x-14),overflow:'truncate',rich:{rank:{fontSize:small?13:14,fontWeight:900,color:colors[c.maxLevel],lineHeight:21},name:{fontSize:small?13:15,fontWeight:800,color:'#273244',lineHeight:21},count:{fontSize:small?12:13,fontWeight:900,color:'#202a3b',lineHeight:18},money:{fontSize:small?11:12,fontWeight:700,color:'#737d8d',lineHeight:18}}}
+        label:{show:true,position:Math.cos(angle)<0?'left':'right',distance:7,formatter:`{name|${truncate(c.name,crowded?11:(small?17:23))}}\n{count|${integer(c.count)} โครงการ}`,width:crowded?78:Math.max(110,w*.28),overflow:'truncate',rich:{name:{fontSize:crowded?9:(small?13:15),fontWeight:800,color:'#273244',lineHeight:crowded?13:20},count:{fontSize:crowded?9:(small?12:13),fontWeight:900,color:colors[c.maxLevel],lineHeight:crowded?12:17}}}
       });
-      links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.8+8*c.count/maxCount,color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'rgba(36,99,212,.34)'},{offset:1,color:colors[c.maxLevel]}]),opacity:i<3?.76:.42,curveness:(y-sourceY)/(h*3.2)}});
+      links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.5+7*c.count/maxCount,color:colors[c.maxLevel],opacity:i<3?.72:.38,curveness:0}});
     });
 
     chart.setOption({
@@ -105,7 +106,7 @@
         }
       },
       series:[{
-        type:'graph',layout:'none',roam:true,data:nodes,links,edgeSymbol:['none','none'],
+        type:'graph',layout:'none',roam:true,zoom:shown.length>32?.62:shown.length>18?.76:1,data:nodes,links,edgeSymbol:['none','none'],
         lineStyle:{cap:'round'},emphasis:{focus:'adjacency',scale:1.12,lineStyle:{opacity:.9}},select:{disabled:true},silent:false
       }]
     },true);
