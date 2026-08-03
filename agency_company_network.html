@@ -70,27 +70,27 @@
   function render(agency,all,shown){
     if(!shown.length) return fail('ไม่พบคู่สัญญา','หน่วยงานนี้ยังไม่มีข้อมูลบริษัทผู้ชนะในชุดข้อมูล');
     const w=chart.getWidth(),h=chart.getHeight(),small=w<460||h<330;
-    const sourceX=w*(small?.22:.24),sourceY=h*.56;
-    const companyX=w*(small?.70:.68);
-    const topY=small?88:96,bottomY=h-36;
+    const sourceX=w*(small?.18:.20),sourceY=h*.50;
+    const companyX=w*(small?.55:.58);
+    const topY=30,bottomY=h-30;
     const maxCount=Math.max(...shown.map(c=>c.count),1),maxValue=Math.max(...shown.map(c=>c.value),1);
     const totalValue=all.reduce((s,c)=>s+c.value,0),totalProjects=all.reduce((s,c)=>s+c.count,0);
-    const agencyW=Math.max(72,Math.min(88,w*.19)),agencyH=agencyW;
+    const agencyW=Math.max(88,Math.min(108,w*.24)),agencyH=agencyW;
     const nodes=[{
       id:'agency',name:agency,x:sourceX,y:sourceY,fixed:true,symbol:agencyIcon(),symbolSize:[agencyW,agencyH],value:totalValue,
-      label:{show:true,position:'bottom',distance:5,formatter:`{big|${integer(totalProjects)}} {small|โครงการ}`,align:'center',rich:{big:{color:'#1749a0',fontWeight:800,fontSize:small?16:19,lineHeight:23,align:'center'},small:{color:'#667085',fontWeight:600,fontSize:small?11:12,lineHeight:23,align:'center'}}}
+      label:{show:true,position:'bottom',distance:6,formatter:`{big|${integer(totalProjects)}} {small|โครงการ}`,align:'center',rich:{big:{color:'#1749a0',fontWeight:800,fontSize:small?19:22,lineHeight:27,align:'center'},small:{color:'#667085',fontWeight:700,fontSize:small?13:14,lineHeight:27,align:'center'}}}
     }];
     const links=[];
     shown.forEach((c,i)=>{
       const y=topY+(bottomY-topY)*(shown.length===1?.5:i/(shown.length-1));
       const x=companyX+(i%2?Math.min(20,w*.04):0);
-      const nodeSize=i<3?(small?39:43):(small?33:36);
+      const nodeSize=i<3?(small?48:52):(small?41:45);
       nodes.push({
         id:c.id,name:c.name,x,y,fixed:true,
         symbol:companyIcon(colors[c.maxLevel]),symbolSize:nodeSize,value:c.value,company:c,
-        label:{show:true,position:'right',distance:9,formatter:`{rank|#${i+1}} {name|${truncate(c.name,small?15:23)}}\n{count|${integer(c.count)} ครั้ง}  {money|${compactMoney(c.value)}}`,width:Math.max(110,w-x-16),overflow:'truncate',rich:{rank:{fontSize:small?11:12,fontWeight:800,color:colors[c.maxLevel],lineHeight:18},name:{fontSize:small?11:13,fontWeight:700,color:'#2f394a',lineHeight:18},count:{fontSize:small?11:12,fontWeight:800,color:'#202a3b',lineHeight:16},money:{fontSize:small?10:11,fontWeight:600,color:'#7b8493',lineHeight:16}}}
+        label:{show:true,position:'right',distance:10,formatter:`{rank|#${i+1}} {name|${truncate(c.name,small?17:25)}}\n{count|${integer(c.count)} ครั้ง}  {money|${compactMoney(c.value)}}`,width:Math.max(125,w-x-14),overflow:'truncate',rich:{rank:{fontSize:small?13:14,fontWeight:900,color:colors[c.maxLevel],lineHeight:21},name:{fontSize:small?13:15,fontWeight:800,color:'#273244',lineHeight:21},count:{fontSize:small?12:13,fontWeight:900,color:'#202a3b',lineHeight:18},money:{fontSize:small?11:12,fontWeight:700,color:'#737d8d',lineHeight:18}}}
       });
-      links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.2+7*c.count/maxCount,color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'rgba(36,99,212,.28)'},{offset:1,color:colors[c.maxLevel]}]),opacity:i<3?.68:.3,curveness:(y-sourceY)/(h*3.2)}});
+      links.push({source:'agency',target:c.id,value:c.count,lineStyle:{width:1.8+8*c.count/maxCount,color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'rgba(36,99,212,.34)'},{offset:1,color:colors[c.maxLevel]}]),opacity:i<3?.76:.42,curveness:(y-sourceY)/(h*3.2)}});
     });
 
     chart.setOption({
