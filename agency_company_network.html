@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>เครือข่ายหน่วยงาน–บริษัทคู่สัญญา</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    :root{--paper:#fffaf0;--panel:#fffdf7;--line:#e6ddcc;--ink:#243047;--muted:#727b8b;--blue:#2563eb;--high:#dc3545;--mid:#ffb000;--low:#0aaa3b}
+    *{box-sizing:border-box}html,body{height:100%;margin:0}body{font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;background:var(--paper);color:var(--ink);overflow:hidden}
+    .app{height:100%;display:grid;grid-template-rows:auto 1fr}
+    header{display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);min-width:0}
+    .title{min-width:220px}.title h1{font-size:17px;margin:0}.title p{font-size:11px;color:var(--muted);margin:2px 0 0}
+    .control{display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;min-width:0}
+    select,input,button{font:inherit;border:1px solid var(--line);border-radius:7px;background:white;color:var(--ink);height:36px}
+    select{width:min(430px,45vw);padding:0 10px}input{width:78px;padding:0 9px}button{padding:0 14px;cursor:pointer;background:var(--blue);border-color:var(--blue);color:white}
+    .content{display:grid;grid-template-columns:minmax(0,1fr) 350px;min-height:0}
+    #chart{width:100%;height:100%;min-height:360px}
+    aside{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:14px}
+    .placeholder{height:100%;display:grid;place-items:center;text-align:center;color:var(--muted);padding:28px}
+    .company h2{font-size:16px;margin:0 0 4px;line-height:1.45}.tax{font-size:11px;color:var(--muted)}
+    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:13px 0}.stat{background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px}.stat b{font-size:17px;display:block}.stat span{font-size:11px;color:var(--muted)}
+    .riskline{height:7px;border-radius:4px;overflow:hidden;display:flex;margin:8px 0 14px}.riskline i{display:block;height:100%}
+    .section-title{font-size:12px;font-weight:700;margin:14px 0 7px}
+    .project{border-top:1px solid var(--line);padding:10px 0}.project:first-of-type{border-top:0}.project-name{font-size:12px;line-height:1.45}.meta{font-size:10px;color:var(--muted);margin-top:5px}.badge{display:inline-block;padding:2px 6px;border-radius:10px;color:#fff;margin-right:4px}
+    .loading{position:fixed;inset:0;background:rgba(255,250,240,.9);display:grid;place-items:center;z-index:9}.loading[hidden]{display:none}.error{color:#b42318;max-width:560px;text-align:center;line-height:1.6}
+    @media(max-width:760px){body{overflow:auto}.app{height:auto;min-height:100%}header{align-items:flex-start;flex-direction:column}.control{width:100%;justify-content:flex-start;flex-wrap:wrap}select{width:100%}.content{grid-template-columns:1fr;grid-template-rows:520px auto}aside{border-left:0;border-top:1px solid var(--line);min-height:280px}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title"><h1>เครือข่ายหน่วยงาน–บริษัทคู่สัญญา</h1><p>ความหนาเส้น = จำนวนครั้ง · ขนาดวงกลม = มูลค่ารวม · สี = ความเสี่ยงสูงสุด</p></div>
+    <div class="control">
+      <select id="agency" aria-label="เลือกหน่วยงาน"></select>
+      <label style="font-size:12px">แสดง Top <input id="topN" type="number" min="5" max="30" value="15"></label>
+      <button id="reset">จัดตำแหน่งใหม่</button>
+    </div>
+  </header>
+  <main class="content">
+    <div id="chart"></div>
+    <aside id="detail"><div class="placeholder">คลิกวงกลมบริษัท<br>เพื่อดูโครงการและรายละเอียด</div></aside>
+  </main>
+</div>
+<div id="loading" class="loading"><div>กำลังอ่านข้อมูลโครงการ…</div></div>
+
+<script>
+(() => {
+  const CSV_URL = new URLSearchParams(location.search).get('data') || 'projects.csv';
+  const levelRank = {low:1, mid:2, high:3};
+  const colors = {high:'#dc3545', mid:'#ffb000', low:'#0aaa3b'};
+  const labels = {high:'สูง', mid:'กลาง', low:'ต่ำ'};
+  const chart = echarts.init(document.getElementById('chart'));
+  const agencyEl = document.getElementById('agency');
+  const topEl = document.getElementById('topN');
+  const detailEl = document.getElementById('detail');
+  let rows = [], grouped = new Map(), currentCompanies = [];
+
+  const money = n => new Intl.NumberFormat('th-TH',{notation:'compact',maximumFractionDigits:1}).format(n || 0) + ' บาท';
+  const number = n => new Intl.NumberFormat('th-TH').format(n || 0);
+  const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const cleanTax = s => String(s || '').replace(/\D/g,'').padStart(13,'0');
+  const num = v => Number(String(v || 0).replace(/,/g,'')) || 0;
+
+  function aggregate(data){
+    grouped = new Map();
+    data.forEach(r => {
+      const agency = (r.agency || '').trim(), winner = (r.winner || '').trim();
+      if(!agency || !winner) return;
+      if(!grouped.has(agency)) grouped.set(agency,new Map());
+      const tax = cleanTax(r.tax_id), key = tax !== '0000000000000' ? tax : winner;
+      const map = grouped.get(agency);
+      if(!map.has(key)) map.set(key,{key,tax:tax==='0000000000000'?'':tax,name:winner,count:0,value:0,maxLevel:'low',risks:{high:0,mid:0,low:0},projects:[]});
+      const c = map.get(key), level = ['high','mid','low'].includes(r.level_) ? r.level_ : 'low';
+      c.count++; c.value += num(r.agreed || r.contract || r.budget); c.risks[level]++;
+      if(levelRank[level] > levelRank[c.maxLevel]) c.maxLevel = level;
+      c.projects.push(r);
+    });
+  }
+
+  function setAgencyOptions(){
+    const names = [...grouped.keys()].sort((a,b)=>a.localeCompare(b,'th'));
+    agencyEl.innerHTML = names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    const requested = new URLSearchParams(location.search).get('agency') || new URLSearchParams(location.search).get('agencyId');
+    if(requested){
+      const exact = names.find(n=>n===requested) || names.find(n=>n.includes(requested));
+      if(exact) agencyEl.value = exact;
+    }
+  }
+
+  function render(){
+    const agency = agencyEl.value;
+    const all = [...(grouped.get(agency)?.values() || [])].sort((a,b)=>b.count-a.count || b.value-a.value);
+    currentCompanies = all.slice(0,Math.max(5,Math.min(30,num(topEl.value)||15)));
+    const maxCount = Math.max(1,...currentCompanies.map(c=>c.count));
+    const values = currentCompanies.map(c=>c.value).filter(Boolean);
+    const minV = Math.min(...values,0), maxV = Math.max(...values,1);
+    const size = v => 25 + 36 * Math.sqrt(Math.max(0,(v-minV)/(maxV-minV || 1)));
+    const agencyValue = currentCompanies.reduce((s,c)=>s+c.value,0);
+    const nodes = [{id:'agency',name:agency,symbolSize:76,category:0,itemStyle:{color:'#2563eb'},value:agencyValue,label:{show:true,position:'inside',width:120,overflow:'truncate',color:'#fff',fontWeight:'bold'}}];
+    const links = [];
+    currentCompanies.forEach((c,i)=>{
+      nodes.push({id:c.key,name:c.name,symbolSize:size(c.value),category:levelRank[c.maxLevel],value:c.value,company:c,itemStyle:{color:colors[c.maxLevel]},label:{show:true,position:'right',width:145,overflow:'truncate'}});
+      links.push({source:'agency',target:c.key,value:c.count,lineStyle:{width:1+5*c.count/maxCount,color:colors[c.maxLevel],opacity:.48}});
+    });
+    chart.setOption({
+      animationDurationUpdate:500,
+      tooltip:{formatter:p=>p.dataType==='edge'?`${number(p.data.value)} ครั้ง`:p.data.company?`<b>${esc(p.data.name)}</b><br>${number(p.data.company.count)} ครั้ง · ${money(p.data.value)}<br>ความเสี่ยงสูงสุด: ${labels[p.data.company.maxLevel]}`:`<b>${esc(agency)}</b><br>${number(all.length)} บริษัท · ${money(agencyValue)}`},
+      legend:[{data:['หน่วยงาน','เสี่ยงต่ำ','เสี่ยงกลาง','เสี่ยงสูง'],bottom:10}],
+      series:[{type:'graph',layout:'force',roam:true,draggable:true,data:nodes,links,categories:[{name:'หน่วยงาน'},{name:'เสี่ยงต่ำ'},{name:'เสี่ยงกลาง'},{name:'เสี่ยงสูง'}],force:{repulsion:420,edgeLength:[110,230],gravity:.08},emphasis:{focus:'adjacency',lineStyle:{opacity:1}},lineStyle:{curveness:.08},label:{fontSize:11}}]
+    },true);
+    detailEl.innerHTML = `<div class="placeholder"><div><b>${esc(agency)}</b><br><br>${number(all.length)} บริษัทคู่สัญญา<br>${number(all.reduce((s,c)=>s+c.count,0))} โครงการ<br>${money(all.reduce((s,c)=>s+c.value,0))}<br><br><span style="font-size:11px">กำลังแสดง ${number(currentCompanies.length)} บริษัทแรก<br>คลิกบริษัทเพื่อดูโครงการ</span></div></div>`;
+    const url = new URL(location.href); url.searchParams.set('agency',agency); history.replaceState(null,'',url);
+  }
+
+  function showCompany(c){
+    const total = Math.max(1,c.count);
+    const projects = [...c.projects].sort((a,b)=>num(b.score)-num(a.score));
+    detailEl.innerHTML = `<div class="company"><h2>${esc(c.name)}</h2><div class="tax">เลขประจำตัวผู้เสียภาษี ${esc(c.tax || 'ไม่ระบุ')}</div>
+      <div class="stats"><div class="stat"><b>${number(c.count)}</b><span>โครงการที่ชนะ</span></div><div class="stat"><b>${money(c.value)}</b><span>มูลค่ารวม</span></div></div>
+      <div class="section-title">สัดส่วนระดับความเสี่ยง</div><div class="riskline"><i style="width:${c.risks.high/total*100}%;background:${colors.high}"></i><i style="width:${c.risks.mid/total*100}%;background:${colors.mid}"></i><i style="width:${c.risks.low/total*100}%;background:${colors.low}"></i></div>
+      <div class="section-title">รายการโครงการ (${number(projects.length)})</div>
+      ${projects.map(p=>`<div class="project"><div class="project-name"><span class="badge" style="background:${colors[p.level_] || colors.low}">${labels[p.level_] || 'ต่ำ'}</span>${esc(p.name)}</div><div class="meta">${money(num(p.agreed||p.contract||p.budget))} · คะแนน ${number(num(p.score))} · ${esc(p.sign_date||p.announce_date||'ไม่ระบุวันที่')}</div></div>`).join('')}</div>`;
+  }
+
+  chart.on('click',p=>{ if(p.dataType==='node' && p.data.company) showCompany(p.data.company); });
+  agencyEl.addEventListener('change',render); topEl.addEventListener('change',render);
+  document.getElementById('reset').addEventListener('click',render);
+  addEventListener('resize',()=>chart.resize());
+
+  Papa.parse(CSV_URL,{download:true,header:true,skipEmptyLines:true,complete:result=>{
+    rows=result.data; aggregate(rows); setAgencyOptions(); document.getElementById('loading').hidden=true;
+    if(!grouped.size) return fail('ไม่พบข้อมูล agency และ winner ในไฟล์ CSV');
+    render();
+  },error:e=>fail(`อ่าน ${CSV_URL} ไม่สำเร็จ: ${e.message}<br>กรุณาเปิดผ่าน GitHub Pages หรือ local web server ไม่ใช่เปิดไฟล์แบบ file://`)});
+
+  function fail(message){document.getElementById('loading').innerHTML=`<div class="error"><b>โหลดข้อมูลไม่สำเร็จ</b><br>${message}</div>`;}
+})();
+</script>
+</body>
+</html>
